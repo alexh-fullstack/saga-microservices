@@ -1,128 +1,301 @@
-# 🌌 Distributed SAGA Pattern with Dedicated Orchestrator
+# 🌌 Distributed SAGA Patterns — Orchestration & Choreography
 
-An educational, production-like implementation of the **Orchestrator-based SAGA Pattern** across multiple microservices in Java 21, Spring Boot, RabbitMQ, and PostgreSQL. It features a complete visual control center dashboard for testing and tracking distributed transaction pipelines.
+A comprehensive, educational monorepo implementing **two** core SAGA patterns for managing distributed transactions in a microservices architecture: **Orchestration** (centralized coordinator) and **Choreography** (decentralized event-driven). Built with Java 21, Spring Boot 3, RabbitMQ, and PostgreSQL.
+
+Each pattern includes a **visual real-time dashboard** to explore transaction flows, inspect database states, and test failure/compensation scenarios with a single click.
 
 ---
 
-## 🏗️ Architecture & Component Overview
+## 📁 Monorepo Structure
 
-The system consists of **4 Spring Boot microservices**, **RabbitMQ** as the message broker, and a single **PostgreSQL** instance configured with 4 separate logical databases to enforce database-per-service isolation.
+```
+saga-microservices/
+│
+├── orchestration/              # Centralized SAGA Orchestrator pattern
+│   ├── saga-orchestrator/      # Central coordinator + Web UI (Port 8080)
+│   ├── order-service/          # Order management (Port 8081)
+│   ├── payment-service/        # Payment processing (Port 8082)
+│   ├── stock-service/          # Inventory management (Port 8083)
+│   ├── docker-compose.yml
+│   ├── init-db.sql
+│   └── pom.xml
+│
+├── choreography/               # Decentralized event-driven Choreography pattern
+│   ├── order-service/          # Order management + Web UI (Port 8085)
+│   ├── payment-service/        # Payment processing (Port 8086)
+│   ├── stock-service/          # Inventory management (Port 8087)
+│   ├── docker-compose.yml
+│   ├── init-db.sql
+│   └── pom.xml
+│
+└── README.md
+```
+
+Both implementations can run **side by side** on the same machine — each uses its own Docker containers, Postgres instance, and RabbitMQ broker with non-overlapping ports.
+
+---
+
+## ⚖️ Orchestration vs Choreography
+
+| Aspect | Orchestration | Choreography |
+|---|---|---|
+| **Coordinator** | Dedicated `saga-orchestrator` service | None — services react to events |
+| **Communication** | Commands & Events via orchestrator | Direct event-to-event between services |
+| **State Tracking** | Centralized in `saga_db` | Distributed — each service tracks its own state |
+| **Compensation** | Orchestrator issues rollback commands | Services listen for failure events and self-compensate |
+| **Coupling** | Services unaware of each other | Services must know which events to emit and react to |
+| **Dashboard** | Served by `saga-orchestrator` on `:8080` | Served by `order-service` on `:8085` |
+
+---
+
+## 🏗️ Architecture: Orchestration Pattern
+
+A **centralized saga-orchestrator** drives the transaction by issuing commands and listening for result events.
 
 ```mermaid
-graph TD
-    Client -->|POST /checkout| Orchestrator[saga-orchestrator]
-    Orchestrator -->|Save Saga State| DB_Saga[(PostgreSQL: saga_db)]
-    
-    Orchestrator -->|1. CreateOrderCommand| RMQ[RabbitMQ]
-    RMQ -->|Route command| OS[order-service]
-    OS -->|Create PENDING| DB_Order[(PostgreSQL: order_db)]
-    OS -->|2. OrderCreatedEvent| RMQ
-    
-    RMQ -->|Route event| Orchestrator
-    Orchestrator -->|3. ReservePaymentCommand| RMQ
-    RMQ -->|Route command| PS[payment-service]
-    PS -->|Deduct Balance| DB_Pay[(PostgreSQL: payment_db)]
-    PS -->|4. PaymentResultEvent| RMQ
-    
-    RMQ -->|Route event| Orchestrator
-    Orchestrator -->|5. ReserveStockCommand| RMQ
-    RMQ -->|Route command| SS[stock-service]
-    SS -->|Deduct Stock| DB_Stock[(PostgreSQL: stock_db)]
-    SS -->|6. StockResultEvent| RMQ
-    
-    RMQ -->|Route event| Orchestrator
-    
-    %% Success flow
-    Orchestrator -.->|7a. ConfirmOrderCommand| RMQ
-    RMQ -.->|Route command| OS
-    OS -.->|Update status to CONFIRMED| DB_Order
-    
-    %% Compensation flow
-    Orchestrator -.->|7b. Failure: RefundPaymentCommand| RMQ
-    Orchestrator -.->|7c. Failure: CancelOrderCommand| RMQ
+sequenceDiagram
+    autonumber
+    actor Client
+    participant O as saga-orchestrator
+    participant OS as order-service
+    participant PS as payment-service
+    participant SS as stock-service
+
+    Client->>O: POST /checkout
+    O->>OS: CreateOrderCommand
+    OS-->>O: OrderCreatedEvent
+    O->>PS: ReservePaymentCommand
+    PS-->>O: PaymentResultEvent
+    O->>SS: ReserveStockCommand
+    SS-->>O: StockResultEvent
+
+    alt All Success
+        O->>OS: ConfirmOrderCommand
+    else Failure
+        O->>PS: RefundPaymentCommand
+        O->>OS: CancelOrderCommand
+    end
 ```
 
-### 📦 Microservices Layout
-1. **`saga-orchestrator`** (Port `8080`): Exposes the `/checkout` entry API, drives the SAGA state machine, tracks status in `saga_db`, and hosts the static dashboard Web UI.
-2. **`order-service`** (Port `8081`): Creates orders in `order_db` and manages order states (`PENDING`, `CONFIRMED`, `CANCELLED`).
-3. **`payment-service`** (Port `8082`): Manages customer balances and processes transactions in `payment_db` (`SUCCESS`, `REFUNDED`, `FAILED`).
-4. **`stock-service`** (Port `8083`): Manages product inventory and reserves/releases stock levels in `stock_db` (`RESERVED`, `RELEASED`, `FAILED`).
-5. **`rabbitmq-broker`** (AMQP Port `5672`, Management UI `15672`): Routes commands and events asynchronously using a topic exchange (`saga-exchange`).
+### Services
+| Service | Port | Database | Role |
+|---|---|---|---|
+| `saga-orchestrator` | `8080` | `saga_db` | Central coordinator, state machine, dashboard UI |
+| `order-service` | `8081` | `order_db` | Creates / confirms / cancels orders |
+| `payment-service` | `8082` | `payment_db` | Reserves / refunds customer balances |
+| `stock-service` | `8083` | `stock_db` | Reserves / releases product inventory |
+| RabbitMQ | `5672` / `15672` | — | Message broker (`saga-exchange`) |
+| PostgreSQL | `5432` | 4 databases | Persistent storage |
 
 ---
 
-## 🌌 Visual SAGA Dashboard & Control Center
+## 🏗️ Architecture: Choreography Pattern
 
-You can monitor and interact with the entire workflow via a beautiful, built-in **SAGA Dashboard** served directly by the orchestrator at:
+Services communicate **directly** via events on a shared topic exchange — no central coordinator.
 
-👉 **[http://localhost:8080/](http://localhost:8080/)**
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant OS as order-service
+    participant PS as payment-service
+    participant SS as stock-service
 
-### Dashboard Features:
-* **Interactive Checkout Form**: Execute custom transactions by entering your own parameters.
-* **One-Click Scenario Templates**: Instantly populate and run Happy Path, Payment Failure, and Stock Failure tests.
-* **Database State Dashboard**: View real-time SQL data query results for payment balances, stock inventory levels, and order listings.
-* **Step-by-Step Pipeline Tracker**: Select any transaction to view a visual flowchart of the SAGA sequence, showing which microservice succeeded, failed, or was compensated.
-* **Auto-Refresh Console**: Polls data updates every 2 seconds automatically.
-* **Database Reset Console**: A button to wipe transaction history and re-seed databases to default states (Alex = \$150.00, PoorBob = \$15.00, JavaBook = 5 units, RareVinyl = 0 units).
+    Client->>OS: POST /checkout
+    Note over OS: Create Order (PENDING)
+
+    OS-->>PS: Event: order.event.created
+
+    alt Payment Success
+        PS-->>SS: Event: payment.event.success
+        PS-->>OS: Event: payment.event.success
+        alt Stock Success
+            SS-->>OS: Event: stock.event.success
+            Note over OS: Order → CONFIRMED
+        else Stock Failure
+            SS-->>PS: Event: stock.event.failed
+            SS-->>OS: Event: stock.event.failed
+            Note over PS: Refund balance (compensation)
+            Note over OS: Order → CANCELLED, Payment → REFUNDED
+        end
+    else Payment Failure
+        PS-->>OS: Event: payment.event.failed
+        Note over OS: Order → CANCELLED
+    end
+```
+
+### Services
+| Service | Host Port | Container Port | Database | Role |
+|---|---|---|---|---|
+| `order-service` | `8085` | `8081` | `order_db` | Initiates saga, tracks order + step states, dashboard UI |
+| `payment-service` | `8086` | `8082` | `payment_db` | Reacts to order events, reserves/refunds funds |
+| `stock-service` | `8087` | `8083` | `stock_db` | Reacts to payment events, reserves inventory |
+| RabbitMQ | `5673` / `15673` | `5672` / `15672` | — | Message broker (`choreography-exchange`) |
+| PostgreSQL | `5433` | `5432` | 3 databases | Persistent storage |
+
+### Key Design Decision: Decentralized State Tracking
+
+In choreography, there is no central `saga_db`. Instead, the `order-service` stores enriched fields directly on its `OrderEntity`:
+
+- `paymentStatus` — `PENDING` → `SUCCESS` / `FAILED` / `REFUNDED`
+- `stockStatus` — `PENDING` → `SUCCESS` / `FAILED`
+- `errorMessage` — reason for failure (e.g., `"Insufficient funds"`, `"Out of stock"`)
+
+This allows the dashboard to reconstruct the full SAGA pipeline visualization without querying a centralized state store.
 
 ---
 
-## ⚡ Setup & Launch Instructions
+## 🌌 Visual SAGA Dashboards
+
+Both implementations come with beautiful, interactive **real-time dashboards**:
+
+| Feature | Orchestration (`:8080`) | Choreography (`:8085`) |
+|---|---|---|
+| Interactive checkout form | ✅ | ✅ |
+| One-click test scenarios | ✅ Happy Path, Payment Fail, Stock Fail | ✅ Happy Path, Payment Fail, Stock Fail |
+| Database state tables | ✅ Balances, Inventory, Orders | ✅ Balances, Inventory, Orders |
+| Pipeline step visualizer | ✅ 4 steps (Order → Payment → Stock → Result) | ✅ 3 steps (Order → Payment → Stock) |
+| Auto-refresh (2s) | ✅ | ✅ |
+| Database reset button | ✅ | ✅ |
+
+---
+
+## ⚡ Setup & Launch
 
 ### Prerequisites
-* Java 21+ & Maven 3.8+
-* Docker & Docker Compose
+- Java 21+ & Maven 3.8+
+- Docker & Docker Compose
 
-### 1. Build Jar Packages
-Compile and repackage all microservices:
+### Run Orchestration
+
 ```bash
-mvn clean package -DskipTests
+# Build
+mvn clean package -DskipTests -f orchestration/pom.xml
+
+# Start containers
+docker compose -f orchestration/docker-compose.yml up --build -d
 ```
 
-### 2. Boot Up the Containers
-Run Docker Compose in the project root folder to spin up Postgres, RabbitMQ, and the 4 microservices:
+Open **[http://localhost:8080/](http://localhost:8080/)** for the Orchestration dashboard.
+
+### Run Choreography
+
 ```bash
-docker compose up --build -d
+# Build
+mvn clean package -DskipTests -f choreography/pom.xml
+
+# Start containers
+docker compose -f choreography/docker-compose.yml up --build -d
 ```
-*(All services will boot once RabbitMQ and Postgres report as healthy).*
+
+Open **[http://localhost:8085/](http://localhost:8085/)** for the Choreography dashboard.
+
+> **Tip**: Both can run simultaneously — they use separate Docker networks and non-overlapping ports.
+
+### Stop Services
+
+```bash
+docker compose -f orchestration/docker-compose.yml down
+docker compose -f choreography/docker-compose.yml down
+```
 
 ---
 
 ## 🧪 Testing Scenarios
 
-You can test the distributed SAGA behaviors using the Dashboard UI templates or executing the following `curl` calls directly:
+All three core scenarios are available in both dashboards as one-click templates, or via `curl`:
 
-### 1. Happy Path (Success)
-Alex (starts with \$150) buys 1 `JavaBook` (\$100). All steps succeed.
+### 1. ✅ Happy Path (Success)
+Alex ($150 balance) buys 1 `JavaBook` ($100, stock: 5). All steps succeed.
 ```bash
-curl -X POST -H "Content-Type: application/json" -d '{"userId":"Alex", "itemId":"JavaBook", "quantity":1, "price":100.0}' http://localhost:8080/checkout
-```
-* **Result**: Order is `CONFIRMED`. Alex's balance is `$50.0`. Stock is decremented to `4`.
+# Orchestration
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"userId":"Alex","itemId":"JavaBook","quantity":1,"price":100.0}' \
+  http://localhost:8080/checkout
 
-### 2. Payment Failure (Insufficient Funds)
-PoorBob (starts with \$15) attempts to buy a `JavaBook` (\$100).
-```bash
-curl -X POST -H "Content-Type: application/json" -d '{"userId":"PoorBob", "itemId":"JavaBook", "quantity":1, "price":100.0}' http://localhost:8080/checkout
+# Choreography
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"userId":"Alex","itemId":"JavaBook","quantity":1,"price":100.0}' \
+  http://localhost:8085/checkout
 ```
-* **Result**: Payment reservation fails. Orchestrator triggers compensation. Order `PENDING` is changed to `CANCELLED`. PoorBob's balance remains `$15.0`.
+**Result**: Order `CONFIRMED`. Balance: $150 → $50. Stock: 5 → 4.
 
-### 3. Stock Failure (Compensation Rollback)
-Alex attempts to buy `RareVinyl` (\$50), which has 0 units in stock.
+### 2. 💳 Payment Failure (Insufficient Funds)
+PoorBob ($15 balance) tries to buy `JavaBook` ($100).
 ```bash
-curl -X POST -H "Content-Type: application/json" -d '{"userId":"Alex", "itemId":"RareVinyl", "quantity":1, "price":50.0}' http://localhost:8080/checkout
+# Orchestration
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"userId":"PoorBob","itemId":"JavaBook","quantity":1,"price":100.0}' \
+  http://localhost:8080/checkout
+
+# Choreography
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"userId":"PoorBob","itemId":"JavaBook","quantity":1,"price":100.0}' \
+  http://localhost:8085/checkout
 ```
-* **Result**: Payment reservation succeeds (Alex balance goes $50 ➡️ $0), but Stock reservation fails. Orchestrator triggers rollback:
-  1. Payment Service refunds `$50.0` to Alex (Balance goes back to `$50.0`).
-  2. Order Service cancels the order (`CANCELLED`).
+**Result**: Order `CANCELLED`. Error: `"Insufficient funds"`. Balance unchanged.
+
+### 3. 📦 Stock Failure (Compensation Rollback)
+Alex tries to buy `RareVinyl` ($50, stock: 0).
+```bash
+# Orchestration
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"userId":"Alex","itemId":"RareVinyl","quantity":1,"price":50.0}' \
+  http://localhost:8080/checkout
+
+# Choreography
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"userId":"Alex","itemId":"RareVinyl","quantity":1,"price":50.0}' \
+  http://localhost:8085/checkout
+```
+**Result**: Payment reserved → Stock fails → Payment **refunded** (compensation) → Order `CANCELLED`.
+
+### Reset Database State
+```bash
+# Orchestration
+curl -X POST http://localhost:8080/checkout/reset
+
+# Choreography
+curl -X POST http://localhost:8085/checkout/reset
+```
 
 ---
 
 ## 🛡️ Production Robustness: Poison Pill Protection
 
-In standard Spring AMQP listeners, an unhandled exception (like a deserialization type mismatch, null pointer, or DB timeout) will automatically requeue the message. If the failure is persistent, RabbitMQ will retarget the consumer in a tight loop, causing **100% CPU usage** and infinite log warnings.
+In standard Spring AMQP listeners, an unhandled exception (deserialization mismatch, null pointer, DB timeout) will automatically requeue the message. If the failure is persistent, RabbitMQ retargets the consumer in a tight loop, causing **100% CPU usage** and infinite log spam.
 
-We secured the messaging framework in this repository by configuring:
+All microservices in both patterns are protected with:
 ```properties
 spring.rabbitmq.listener.simple.default-requeue-rejected=false
 ```
-in all microservices. This guarantees that any execution/conversion failures reject the poison message immediately without requeuing, maintaining near-zero CPU footprint during error cases.
+This guarantees that poison messages are rejected immediately without requeuing, maintaining near-zero CPU footprint during error conditions.
+
+---
+
+## 🛠️ Tech Stack
+
+| Technology | Version | Purpose |
+|---|---|---|
+| Java | 21 | Runtime |
+| Spring Boot | 3.4.0 | Application framework |
+| Spring AMQP | — | RabbitMQ integration |
+| Spring Data JPA | — | PostgreSQL ORM |
+| RabbitMQ | 3-management | Async message broker |
+| PostgreSQL | 15-alpine | Persistent storage |
+| Docker Compose | — | Container orchestration |
+| Jackson | — | JSON serialization for AMQP messages |
+
+---
+
+## 📖 Learning Resources
+
+This project demonstrates key distributed systems concepts:
+
+- **SAGA Pattern** — managing distributed transactions without 2PC
+- **Orchestration vs Choreography** — two fundamental coordination strategies
+- **Compensating Transactions** — rolling back completed steps on failure
+- **Event-Driven Architecture** — loose coupling via asynchronous messaging
+- **Database-per-Service** — data isolation in microservices
+- **Idempotent Operations** — safe message reprocessing
+- **Poison Pill Protection** — preventing infinite retry loops
