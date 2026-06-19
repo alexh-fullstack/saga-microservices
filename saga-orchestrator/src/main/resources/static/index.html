@@ -1,0 +1,1211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAGA Distributed Transaction Control Center</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0b0f19;
+            --bg-secondary: #111827;
+            --card-bg: rgba(30, 41, 59, 0.45);
+            --card-border: rgba(255, 255, 255, 0.06);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            
+            --color-primary: #6366f1;
+            --color-primary-glow: rgba(99, 102, 241, 0.15);
+            --color-success: #10b981;
+            --color-success-glow: rgba(16, 185, 129, 0.15);
+            --color-error: #ef4444;
+            --color-error-glow: rgba(239, 68, 68, 0.15);
+            --color-warning: #f59e0b;
+            --color-warning-glow: rgba(245, 158, 11, 0.15);
+            --color-info: #06b6d4;
+            --color-info-glow: rgba(6, 182, 212, 0.15);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.12) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(6, 182, 212, 0.08) 0px, transparent 50%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 2rem;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* Header Style */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid var(--card-border);
+            margin-bottom: 2rem;
+        }
+
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .logo-glow {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: var(--color-success);
+            box-shadow: 0 0 12px var(--color-success);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #fff 0%, var(--text-secondary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 0.6rem 1.2rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--color-primary) 0%, #4f46e5 100%);
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(99, 102, 241, 0.35);
+        }
+
+        .btn-danger {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--color-error);
+            border-color: rgba(239, 68, 68, 0.2);
+        }
+
+        .btn-danger:hover {
+            background: var(--color-error);
+            color: #fff;
+            box-shadow: 0 4px 12px var(--color-error-glow);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-primary);
+            border-color: var(--card-border);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .refresh-toggle {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            background: rgba(255, 255, 255, 0.03);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            border: 1px solid var(--card-border);
+        }
+
+        .refresh-toggle input {
+            cursor: pointer;
+        }
+
+        /* Dashboard Grid Layout */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        @media (max-width: 1024px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Glassmorphism Card Style */
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card-header {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 1.2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #fff;
+        }
+
+        .card-header span {
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        /* Checkout Form */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 0.4rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            color: #fff;
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .form-group input:focus, .form-group select:focus {
+            border-color: var(--color-primary);
+        }
+
+        /* Scenario Templates Quick Actions */
+        .templates-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+
+        .template-btn {
+            padding: 0.75rem;
+            border-radius: 10px;
+            border: 1px solid var(--card-border);
+            background: rgba(255, 255, 255, 0.02);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .template-btn:hover {
+            transform: translateY(-2px);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .template-btn.happy { border-color: rgba(16, 185, 129, 0.3); }
+        .template-btn.happy:hover { background: rgba(16, 185, 129, 0.08); }
+        .template-btn.pay-fail { border-color: rgba(245, 158, 11, 0.3); }
+        .template-btn.pay-fail:hover { background: rgba(245, 158, 11, 0.08); }
+        .template-btn.stock-fail { border-color: rgba(239, 68, 68, 0.3); }
+        .template-btn.stock-fail:hover { background: rgba(239, 68, 68, 0.08); }
+
+        .template-title {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .template-desc {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+        }
+
+        /* Database State Dashboard tables */
+        .sub-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        @media (max-width: 640px) {
+            .sub-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+            text-align: left;
+        }
+
+        th {
+            padding: 0.75rem 1rem;
+            color: var(--text-secondary);
+            font-weight: 600;
+            border-bottom: 1px solid var(--card-border);
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.5px;
+        }
+
+        td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+            color: #e2e8f0;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        .table-container {
+            max-height: 180px;
+            overflow-y: auto;
+        }
+
+        /* Scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.6rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .badge-success { background: var(--color-success-glow); color: var(--color-success); }
+        .badge-error { background: var(--color-error-glow); color: var(--color-error); }
+        .badge-warning { background: var(--color-warning-glow); color: var(--color-warning); }
+        .badge-info { background: var(--color-info-glow); color: var(--color-info); }
+        .badge-pending { background: rgba(255, 255, 255, 0.05); color: var(--text-secondary); }
+
+        /* Sagas Section */
+        .sagas-section {
+            margin-top: 2rem;
+            display: grid;
+            grid-template-columns: 3fr 2fr;
+            gap: 2rem;
+        }
+
+        @media (max-width: 1024px) {
+            .sagas-section {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .sagas-table-container {
+            max-height: 380px;
+            overflow-y: auto;
+        }
+
+        .sagas-table tbody tr {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .sagas-table tbody tr:hover {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .sagas-table tbody tr.selected {
+            background: rgba(99, 102, 241, 0.1);
+            border-left: 3px solid var(--color-primary);
+        }
+
+        .saga-id-cell {
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        /* Visualizer Steps */
+        .visualizer-container {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+        }
+
+        .visualizer-header {
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--card-border);
+        }
+
+        .visualizer-steps {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+            margin: 2.5rem 0;
+            padding: 0 1rem;
+        }
+
+        /* Line between steps */
+        .visualizer-steps::before {
+            content: '';
+            position: absolute;
+            top: 20px;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: rgba(255, 255, 255, 0.05);
+            z-index: 1;
+        }
+
+        .step-progress-line {
+            position: absolute;
+            top: 20px;
+            left: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--color-success) 0%, var(--color-primary) 100%);
+            z-index: 2;
+            width: 0%;
+            transition: width 0.4s ease;
+        }
+
+        .step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            z-index: 3;
+            width: 80px;
+        }
+
+        .step-circle {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: var(--bg-secondary);
+            border: 3px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            transition: all 0.3s ease;
+        }
+
+        .step-label {
+            margin-top: 0.75rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-align: center;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+
+        .step-status {
+            font-size: 0.65rem;
+            margin-top: 0.2rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        /* Step states */
+        .step.pending .step-circle {
+            border-color: rgba(255, 255, 255, 0.08);
+            color: var(--text-secondary);
+        }
+
+        .step.active .step-circle {
+            border-color: var(--color-primary);
+            color: #fff;
+            box-shadow: 0 0 12px var(--color-primary-glow);
+            background: var(--color-primary);
+        }
+        .step.active .step-label { color: #fff; }
+
+        .step.success .step-circle {
+            border-color: var(--color-success);
+            color: #fff;
+            box-shadow: 0 0 12px var(--color-success-glow);
+            background: var(--color-success);
+        }
+        .step.success .step-label { color: var(--color-success); }
+
+        .step.failed .step-circle {
+            border-color: var(--color-error);
+            color: #fff;
+            box-shadow: 0 0 12px var(--color-error-glow);
+            background: var(--color-error);
+        }
+        .step.failed .step-label { color: var(--color-error); }
+
+        .step.compensated .step-circle {
+            border-color: var(--color-warning);
+            color: #fff;
+            box-shadow: 0 0 12px var(--color-warning-glow);
+            background: var(--color-warning);
+        }
+        .step.compensated .step-label { color: var(--color-warning); }
+
+        .saga-error-message-box {
+            background: rgba(239, 68, 68, 0.08);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            color: #fca5a5;
+            padding: 0.8rem 1.2rem;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            margin-top: 1rem;
+            line-height: 1.4;
+            display: none;
+        }
+
+        .toast-container {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .toast {
+            background: rgba(17, 24, 39, 0.9);
+            border: 1px solid var(--card-border);
+            padding: 1rem 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: #fff;
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .toast-success { border-left: 4px solid var(--color-success); }
+        .toast-error { border-left: 4px solid var(--color-error); }
+        .toast-info { border-left: 4px solid var(--color-primary); }
+
+        .placeholder-text {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            text-align: center;
+            padding: 3rem 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- HEADER -->
+        <header>
+            <div class="logo-container">
+                <div class="logo-glow"></div>
+                <h1>SAGA Transaction Control Center</h1>
+            </div>
+            <div class="controls">
+                <button class="btn btn-secondary" onclick="fetchDashboard(true)">
+                    Refresh State
+                </button>
+                <div class="refresh-toggle">
+                    <input type="checkbox" id="auto-refresh-check" checked onchange="toggleAutoRefresh(this)">
+                    <label for="auto-refresh-check">Auto-Refresh (2s)</label>
+                </div>
+                <button class="btn btn-danger" onclick="confirmReset()">
+                    Reset Databases
+                </button>
+            </div>
+        </header>
+
+        <!-- MAIN LAYOUT -->
+        <div class="dashboard-grid">
+            
+            <!-- LEFT COLUMN: checkout console -->
+            <div class="card">
+                <div class="card-header">
+                    Saga Action Console
+                    <span>API Gateway (Port 8080)</span>
+                </div>
+                
+                <form id="checkout-form" onsubmit="handleFormSubmit(event)">
+                    <div class="form-group">
+                        <label for="userId">User ID</label>
+                        <input type="text" id="userId" required placeholder="e.g. Alex, PoorBob">
+                    </div>
+                    <div class="form-group">
+                        <label for="itemId">Product Item ID</label>
+                        <select id="itemId" onchange="updateDefaultPrice(this.value)">
+                            <option value="JavaBook">JavaBook (Stock: 5, Price: $100)</option>
+                            <option value="RareVinyl">RareVinyl (Stock: 0, Price: $50)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="quantity">Quantity</label>
+                        <input type="number" id="quantity" value="1" min="1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="price">Price ($)</label>
+                        <input type="number" id="price" value="100" min="1" step="0.01" required>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem; padding: 0.8rem;">
+                        Initiate Checkout Saga
+                    </button>
+                </form>
+
+                <div style="margin-top: 1.5rem; border-top: 1px solid var(--card-border); padding-top: 1rem;">
+                    <div class="form-group"><label style="margin-bottom: 0.6rem;">Pre-configured Test Scenarios</label></div>
+                    <div class="templates-grid">
+                        <div class="template-btn happy" onclick="runScenario('Alex', 'JavaBook', 1, 100)">
+                            <span class="template-title" style="color: var(--color-success)">Happy Path</span>
+                            <span class="template-desc">Alex buys Book</span>
+                            <span class="template-desc" style="font-weight:700">$100 (Success)</span>
+                        </div>
+                        <div class="template-btn pay-fail" onclick="runScenario('PoorBob', 'JavaBook', 1, 100)">
+                            <span class="template-title" style="color: var(--color-warning)">Payment Fail</span>
+                            <span class="template-desc">PoorBob ($15)</span>
+                            <span class="template-desc" style="font-weight:700">Rolls Back Order</span>
+                        </div>
+                        <div class="template-btn stock-fail" onclick="runScenario('Alex', 'RareVinyl', 1, 50)">
+                            <span class="template-title" style="color: var(--color-error)">Stock Fail</span>
+                            <span class="template-desc">RareVinyl (0 units)</span>
+                            <span class="template-desc" style="font-weight:700">Refunds + Cancels</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT COLUMN: live states -->
+            <div class="card">
+                <div class="card-header">
+                    Microservice Local States
+                    <span>Real-time DB Queries</span>
+                </div>
+                
+                <div class="sub-grid">
+                    <!-- Balances Table -->
+                    <div>
+                        <div style="font-size: 0.85rem; font-weight: 700; margin-bottom: 0.5rem; color: #fff; display: flex; align-items:center; gap: 0.4rem;">
+                            <span style="width: 8px; height: 8px; border-radius:50%; background:var(--color-primary)"></span>
+                            Payment DB (Balances)
+                        </div>
+                        <div class="table-container">
+                            <table id="balances-table">
+                                <thead>
+                                    <tr>
+                                        <th>User ID</th>
+                                        <th>Balance</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Inventory Table -->
+                    <div>
+                        <div style="font-size: 0.85rem; font-weight: 700; margin-bottom: 0.5rem; color: #fff; display: flex; align-items:center; gap: 0.4rem;">
+                            <span style="width: 8px; height: 8px; border-radius:50%; background:var(--color-info)"></span>
+                            Stock DB (Inventory)
+                        </div>
+                        <div class="table-container">
+                            <table id="inventory-table">
+                                <thead>
+                                    <tr>
+                                        <th>Item ID</th>
+                                        <th>Stock</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Orders List -->
+                <div style="border-top: 1px solid var(--card-border); padding-top: 1rem;">
+                    <div style="font-size: 0.85rem; font-weight: 700; margin-bottom: 0.5rem; color: #fff; display: flex; align-items:center; gap: 0.4rem;">
+                        <span style="width: 8px; height: 8px; border-radius:50%; background:var(--color-warning)"></span>
+                        Order DB (Created Orders)
+                    </div>
+                    <div class="table-container" style="max-height: 180px;">
+                        <table id="orders-table">
+                            <thead>
+                                <tr>
+                                    <th>Order ID</th>
+                                    <th>User</th>
+                                    <th>Product</th>
+                                    <th>Qty</th>
+                                    <th>Amount</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SAGA TRANSACTIONS LOGS AND VISUALIZER -->
+        <div class="sagas-section">
+            
+            <!-- Sagas list -->
+            <div class="card">
+                <div class="card-header">
+                    Saga Orchestrator State Log
+                    <span>saga_db.sagas</span>
+                </div>
+                <div class="sagas-table-container">
+                    <table class="sagas-table" id="sagas-table">
+                        <thead>
+                            <tr>
+                                <th>Saga ID</th>
+                                <th>User</th>
+                                <th>Item</th>
+                                <th>Price</th>
+                                <th>Status</th>
+                                <th>Order ID</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Saga visualizer detail -->
+            <div class="card" id="visualizer-card">
+                <div class="card-header">
+                    Saga Steps Pipeline
+                    <span>Visual Progress Tracker</span>
+                </div>
+                <div class="visualizer-container" id="visualizer-container">
+                    <div class="placeholder-text" id="visualizer-placeholder">
+                        Click on any Saga transaction in the list to visualize its step-by-step execution.
+                    </div>
+                    
+                    <div id="visualizer-active" style="display: none;">
+                        <div class="visualizer-header">
+                            <h3 id="vis-saga-id" style="font-size: 0.9rem; font-family: monospace; color: var(--text-secondary)"></h3>
+                            <div style="display: flex; gap: 1rem; font-size: 0.8rem; margin-top: 0.4rem;">
+                                <span>User: <strong id="vis-user" style="color: #fff"></strong></span>
+                                <span>Item: <strong id="vis-item" style="color: #fff"></strong></span>
+                                <span>Amount: <strong id="vis-amount" style="color: #fff"></strong></span>
+                            </div>
+                        </div>
+
+                        <div class="visualizer-steps">
+                            <div class="step-progress-line" id="vis-progress-line"></div>
+                            
+                            <div class="step" id="step-order">
+                                <div class="step-circle">1</div>
+                                <div class="step-label">Order Service</div>
+                                <div class="step-status" id="step-order-status">Pending</div>
+                            </div>
+                            
+                            <div class="step" id="step-payment">
+                                <div class="step-circle">2</div>
+                                <div class="step-label">Payment Service</div>
+                                <div class="step-status" id="step-payment-status">Pending</div>
+                            </div>
+                            
+                            <div class="step" id="step-stock">
+                                <div class="step-circle">3</div>
+                                <div class="step-label">Stock Service</div>
+                                <div class="step-status" id="step-stock-status">Pending</div>
+                            </div>
+                            
+                            <div class="step" id="step-final">
+                                <div class="step-circle">4</div>
+                                <div class="step-label">Saga Result</div>
+                                <div class="step-status" id="step-final-status">Pending</div>
+                            </div>
+                        </div>
+
+                        <div class="saga-error-message-box" id="vis-error-box">
+                            <strong>Rollback Reason:</strong> <span id="vis-error-text"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST CONTAINER -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script>
+        let selectedSagaId = null;
+        let autoRefreshInterval = null;
+
+        // Auto-populate price based on item selection
+        function updateDefaultPrice(val) {
+            const priceInput = document.getElementById('price');
+            if (val === 'JavaBook') {
+                priceInput.value = 100;
+            } else if (val === 'RareVinyl') {
+                priceInput.value = 50;
+            }
+        }
+
+        // Setup auto-refresh on load
+        window.addEventListener('DOMContentLoaded', () => {
+            fetchDashboard();
+            autoRefreshInterval = setInterval(fetchDashboard, 2000);
+        });
+
+        function toggleAutoRefresh(cb) {
+            if (cb.checked) {
+                autoRefreshInterval = setInterval(fetchDashboard, 2000);
+                showToast('Auto-refresh enabled', 'info');
+            } else {
+                clearInterval(autoRefreshInterval);
+                showToast('Auto-refresh disabled', 'info');
+            }
+        }
+
+        // Handle scenario templates
+        function runScenario(user, item, qty, price) {
+            document.getElementById('userId').value = user;
+            document.getElementById('itemId').value = item;
+            document.getElementById('quantity').value = qty;
+            document.getElementById('price').value = price;
+            
+            showToast(`Form populated with ${user} buying ${item}`, 'info');
+        }
+
+        // Submit checkout
+        async function handleFormSubmit(e) {
+            e.preventDefault();
+            const userId = document.getElementById('userId').value;
+            const itemId = document.getElementById('itemId').value;
+            const quantity = parseInt(document.getElementById('quantity').value);
+            const price = parseFloat(document.getElementById('price').value);
+
+            try {
+                const response = await fetch('/checkout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId, itemId, quantity, price })
+                });
+                
+                if (response.ok) {
+                    const text = await response.text();
+                    showToast('Saga transaction initiated successfully!', 'success');
+                    
+                    // Extract Saga ID from response string (e.g. "Checkout Saga Initiated. ID: <uuid>")
+                    const idMatch = text.match(/ID: ([a-f0-9\-]+)/i);
+                    if (idMatch && idMatch[1]) {
+                        selectedSagaId = idMatch[1];
+                    }
+                    
+                    fetchDashboard();
+                } else {
+                    showToast('Failed to initiate Saga', 'error');
+                }
+            } catch (err) {
+                console.error(err);
+                showToast('Network error while initiating Saga', 'error');
+            }
+        }
+
+        // Fetch dashboard state
+        async function fetchDashboard(manual = false) {
+            try {
+                const res = await fetch('/checkout/dashboard');
+                if (!res.ok) throw new Error('Failed to fetch dashboard');
+                const data = await res.json();
+                
+                updateBalancesTable(data.balances);
+                updateInventoryTable(data.inventory);
+                updateOrdersTable(data.orders);
+                updateSagasTable(data.sagas);
+                
+                if (selectedSagaId) {
+                    const selectedSaga = data.sagas.find(s => s.id === selectedSagaId);
+                    if (selectedSaga) {
+                        renderSagaVisualizer(selectedSaga);
+                    }
+                }
+                
+                if (manual) {
+                    showToast('State refreshed successfully', 'success');
+                }
+            } catch (err) {
+                console.error(err);
+                if (manual) {
+                    showToast('Failed to refresh state', 'error');
+                }
+            }
+        }
+
+        function updateBalancesTable(balances) {
+            const tbody = document.querySelector('#balances-table tbody');
+            tbody.innerHTML = '';
+            if (!balances || balances.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="2" class="placeholder-text" style="padding:1rem;">No balances seed data.</td></tr>';
+                return;
+            }
+            balances.forEach(b => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><strong>${b.userId}</strong></td>
+                    <td style="color: var(--color-success); font-weight:600">$${b.balance.toFixed(2)}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function updateInventoryTable(inventory) {
+            const tbody = document.querySelector('#inventory-table tbody');
+            tbody.innerHTML = '';
+            if (!inventory || inventory.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="2" class="placeholder-text" style="padding:1rem;">No inventory seed data.</td></tr>';
+                return;
+            }
+            inventory.forEach(i => {
+                const isOutOfStock = i.quantity === 0;
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><strong>${i.itemId}</strong></td>
+                    <td style="font-weight:600; color: ${isOutOfStock ? 'var(--color-error)' : '#fff'}">${i.quantity} units</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function updateOrdersTable(orders) {
+            const tbody = document.querySelector('#orders-table tbody');
+            tbody.innerHTML = '';
+            if (!orders || orders.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="placeholder-text" style="padding:1.5rem; text-align:center;">No order records found in DB.</td></tr>';
+                return;
+            }
+            orders.forEach(o => {
+                const row = document.createElement('tr');
+                let badgeClass = 'badge-pending';
+                if (o.status === 'CONFIRMED') badgeClass = 'badge-success';
+                if (o.status === 'CANCELLED') badgeClass = 'badge-error';
+                
+                row.innerHTML = `
+                    <td class="saga-id-cell" title="${o.id}">${o.id.substring(0, 8)}...</td>
+                    <td>${o.userId}</td>
+                    <td>${o.itemId}</td>
+                    <td>${o.quantity}</td>
+                    <td style="font-weight:600">$${(o.price * o.quantity).toFixed(2)}</td>
+                    <td><span class="badge ${badgeClass}">${o.status}</span></td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function updateSagasTable(sagas) {
+            const tbody = document.querySelector('#sagas-table tbody');
+            tbody.innerHTML = '';
+            if (!sagas || sagas.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="placeholder-text" style="padding:3rem 0; text-align:center;">No SAGA logs. Run checkout scenario above.</td></tr>';
+                return;
+            }
+            sagas.forEach(s => {
+                const row = document.createElement('tr');
+                if (s.id === selectedSagaId) {
+                    row.classList.add('selected');
+                }
+                
+                let badgeClass = 'badge-pending';
+                if (s.status === 'COMPLETED') badgeClass = 'badge-success';
+                if (s.status === 'FAILED') badgeClass = 'badge-error';
+                if (s.status === 'COMPENSATING') badgeClass = 'badge-warning';
+                if (['STARTED', 'ORDER_CREATED', 'PAYMENT_RESERVED', 'STOCK_RESERVED'].includes(s.status)) badgeClass = 'badge-info';
+                
+                row.onclick = () => {
+                    selectedSagaId = s.id;
+                    // Force selected styling update
+                    document.querySelectorAll('#sagas-table tbody tr').forEach(r => r.classList.remove('selected'));
+                    row.classList.add('selected');
+                    renderSagaVisualizer(s);
+                };
+
+                row.innerHTML = `
+                    <td class="saga-id-cell" style="font-weight:600">${s.id.substring(0, 18)}...</td>
+                    <td>${s.userId}</td>
+                    <td>${s.itemId} (x${s.quantity})</td>
+                    <td style="font-weight:600">$${(s.price * s.quantity).toFixed(2)}</td>
+                    <td><span class="badge ${badgeClass}">${s.status}</span></td>
+                    <td class="saga-id-cell">${s.orderId ? s.orderId.substring(0, 8) + '...' : '—'}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // Render SAGA step-by-step visual pipeline
+        function renderSagaVisualizer(saga) {
+            document.getElementById('visualizer-placeholder').style.display = 'none';
+            document.getElementById('visualizer-active').style.display = 'block';
+
+            // Header info
+            document.getElementById('vis-saga-id').innerText = `SAGA ID: ${saga.id}`;
+            document.getElementById('vis-user').innerText = saga.userId;
+            document.getElementById('vis-item').innerText = `${saga.itemId} (x${saga.quantity})`;
+            document.getElementById('vis-amount').innerText = `$${(saga.price * saga.quantity).toFixed(2)}`;
+
+            const stepOrder = document.getElementById('step-order');
+            const stepPayment = document.getElementById('step-payment');
+            const stepStock = document.getElementById('step-stock');
+            const stepFinal = document.getElementById('step-final');
+            const progLine = document.getElementById('vis-progress-line');
+
+            const statusOrder = document.getElementById('step-order-status');
+            const statusPayment = document.getElementById('step-payment-status');
+            const statusStock = document.getElementById('step-stock-status');
+            const statusFinal = document.getElementById('step-final-status');
+
+            // Reset classes
+            [stepOrder, stepPayment, stepStock, stepFinal].forEach(s => {
+                s.className = 'step';
+            });
+
+            // Map States
+            let orderState = 'pending';
+            let paymentState = 'pending';
+            let stockState = 'pending';
+            let finalState = 'pending';
+            let progressWidth = '0%';
+
+            const stat = saga.status;
+
+            if (stat === 'STARTED') {
+                orderState = 'active';
+                statusOrder.innerText = 'Creating...';
+                statusPayment.innerText = 'Pending';
+                statusStock.innerText = 'Pending';
+                statusFinal.innerText = 'Pending';
+                progressWidth = '12%';
+            } 
+            else if (stat === 'ORDER_CREATED') {
+                orderState = 'success';
+                paymentState = 'active';
+                statusOrder.innerText = 'Success';
+                statusPayment.innerText = 'Reserving...';
+                statusStock.innerText = 'Pending';
+                statusFinal.innerText = 'Pending';
+                progressWidth = '38%';
+            } 
+            else if (stat === 'PAYMENT_RESERVED') {
+                orderState = 'success';
+                paymentState = 'success';
+                stockState = 'active';
+                statusOrder.innerText = 'Success';
+                statusPayment.innerText = 'Success';
+                statusStock.innerText = 'Reserving...';
+                statusFinal.innerText = 'Pending';
+                progressWidth = '62%';
+            } 
+            else if (stat === 'STOCK_RESERVED') {
+                orderState = 'success';
+                paymentState = 'success';
+                stockState = 'success';
+                finalState = 'active';
+                statusOrder.innerText = 'Success';
+                statusPayment.innerText = 'Success';
+                statusStock.innerText = 'Success';
+                statusFinal.innerText = 'Confirming...';
+                progressWidth = '88%';
+            } 
+            else if (stat === 'COMPLETED') {
+                orderState = 'success';
+                paymentState = 'success';
+                stockState = 'success';
+                finalState = 'success';
+                statusOrder.innerText = 'Success';
+                statusPayment.innerText = 'Success';
+                statusStock.innerText = 'Success';
+                statusFinal.innerText = 'CONFIRMED';
+                progressWidth = '100%';
+            } 
+            else if (stat === 'COMPENSATING' || stat === 'FAILED') {
+                // Determine where it failed based on the error message
+                const isStockFailure = saga.errorMessage && (
+                    saga.errorMessage.toLowerCase().includes('stock') || 
+                    saga.errorMessage.toLowerCase().includes('inventory') ||
+                    saga.errorMessage.toLowerCase().includes('out of stock')
+                );
+                
+                if (isStockFailure) {
+                    // Step 1 & 2 succeeded, but Step 3 stock failed. Step 1 and 2 compensated
+                    orderState = 'compensated';
+                    paymentState = 'compensated';
+                    stockState = 'failed';
+                    finalState = 'compensated';
+
+                    statusOrder.innerText = 'CANCELLED';
+                    statusPayment.innerText = 'REFUNDED';
+                    statusStock.innerText = 'FAILED';
+                    statusFinal.innerText = 'CANCELLED';
+                    progressWidth = '62%';
+                } else {
+                    // Step 1 created order successfully, but Step 2 payment failed. Step 1 order is compensated (cancelled)
+                    orderState = 'compensated';
+                    paymentState = 'failed';
+                    stockState = 'pending';
+                    finalState = 'compensated';
+
+                    statusOrder.innerText = 'CANCELLED';
+                    statusPayment.innerText = 'FAILED';
+                    statusStock.innerText = 'Skipped';
+                    statusFinal.innerText = 'CANCELLED';
+                    progressWidth = '38%';
+                }
+            }
+
+            // Apply classes
+            stepOrder.classList.add(orderState);
+            stepPayment.classList.add(paymentState);
+            stepStock.classList.add(stockState);
+            stepFinal.classList.add(finalState);
+            progLine.style.width = progressWidth;
+
+            // Handle error block
+            const errorBox = document.getElementById('vis-error-box');
+            if (saga.errorMessage) {
+                document.getElementById('vis-error-text').innerText = saga.errorMessage;
+                errorBox.style.display = 'block';
+            } else {
+                errorBox.style.display = 'none';
+            }
+        }
+
+        // Database reset call
+        async function confirmReset() {
+            if (confirm("Are you sure you want to delete all transaction logs and reset user balances ($150/$15) and inventory stock (5/0)?")) {
+                try {
+                    const res = await fetch('/checkout/reset', { method: 'POST' });
+                    if (res.ok) {
+                        selectedSagaId = null;
+                        document.getElementById('visualizer-placeholder').style.display = 'block';
+                        document.getElementById('visualizer-active').style.display = 'none';
+                        showToast('Database reset and re-seeded successfully', 'success');
+                        fetchDashboard();
+                    } else {
+                        showToast('Failed to reset databases', 'error');
+                    }
+                } catch (err) {
+                    console.error(err);
+                    showToast('Network error while resetting databases', 'error');
+                }
+            }
+        }
+
+        // Toast message notifications
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            
+            let emoji = 'ℹ️';
+            if (type === 'success') emoji = '✅';
+            if (type === 'error') emoji = '❌';
+            
+            toast.innerHTML = `<span>${emoji}</span> <span>${message}</span>`;
+            container.appendChild(toast);
+            
+            // Trigger animation
+            setTimeout(() => {
+                toast.classList.add('show');
+            }, 10);
+            
+            // Remove after 3.5s
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => {
+                    toast.remove();
+                }, 300);
+            }, 3500);
+        }
+    </script>
+</body>
+</html>
