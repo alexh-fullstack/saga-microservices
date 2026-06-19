@@ -53,6 +53,33 @@ Both implementations can run **side by side** on the same machine — each uses 
 A **centralized saga-orchestrator** drives the transaction by issuing commands and listening for result events.
 
 ```mermaid
+graph TD
+    Client(["🧑 Client"]) -->|POST /checkout| ORCH["🎯 saga-orchestrator<br/>(Port 8080)"]
+
+    ORCH <-->|Commands / Events| RMQ["🐇 RabbitMQ<br/>(saga-exchange)"]
+
+    RMQ <-->|CreateOrder<br/>ConfirmOrder<br/>CancelOrder| OS["📦 order-service<br/>(Port 8081)"]
+    RMQ <-->|ReservePayment<br/>RefundPayment| PS["💳 payment-service<br/>(Port 8082)"]
+    RMQ <-->|ReserveStock<br/>ReleaseStock| SS["📦 stock-service<br/>(Port 8083)"]
+
+    ORCH --- DB_SAGA[(saga_db)]
+    OS --- DB_ORDER[(order_db)]
+    PS --- DB_PAY[(payment_db)]
+    SS --- DB_STOCK[(stock_db)]
+
+    PG["🐘 PostgreSQL (Port 5432)"] -.- DB_SAGA & DB_ORDER & DB_PAY & DB_STOCK
+
+    style ORCH fill:#6366f1,stroke:#4f46e5,color:#fff
+    style RMQ fill:#f59e0b,stroke:#d97706,color:#fff
+    style OS fill:#10b981,stroke:#059669,color:#fff
+    style PS fill:#10b981,stroke:#059669,color:#fff
+    style SS fill:#10b981,stroke:#059669,color:#fff
+    style PG fill:#3b82f6,stroke:#2563eb,color:#fff
+```
+
+### Transaction Flow (Sequence)
+
+```mermaid
 sequenceDiagram
     autonumber
     actor Client
@@ -92,6 +119,36 @@ sequenceDiagram
 ## 🏗️ Architecture: Choreography Pattern
 
 Services communicate **directly** via events on a shared topic exchange — no central coordinator.
+
+```mermaid
+graph TD
+    Client(["🧑 Client"]) -->|POST /checkout| OS["📦 order-service<br/>(Port 8085)<br/>+ Dashboard UI"]
+
+    OS -->|order.event.created| RMQ["🐇 RabbitMQ<br/>(choreography-exchange)"]
+
+    RMQ -->|order.event.created| PS["💳 payment-service<br/>(Port 8086)"]
+    PS -->|payment.event.success<br/>payment.event.failed| RMQ
+
+    RMQ -->|payment.event.success| SS["📦 stock-service<br/>(Port 8087)"]
+    SS -->|stock.event.success<br/>stock.event.failed| RMQ
+
+    RMQ -->|payment.event.*<br/>stock.event.*| OS
+    RMQ -->|stock.event.failed| PS
+
+    OS --- DB_ORDER[(order_db)]
+    PS --- DB_PAY[(payment_db)]
+    SS --- DB_STOCK[(stock_db)]
+
+    PG["🐘 PostgreSQL (Port 5433)"] -.- DB_ORDER & DB_PAY & DB_STOCK
+
+    style OS fill:#06b6d4,stroke:#0891b2,color:#fff
+    style RMQ fill:#f59e0b,stroke:#d97706,color:#fff
+    style PS fill:#10b981,stroke:#059669,color:#fff
+    style SS fill:#10b981,stroke:#059669,color:#fff
+    style PG fill:#3b82f6,stroke:#2563eb,color:#fff
+```
+
+### Transaction Flow (Sequence)
 
 ```mermaid
 sequenceDiagram
